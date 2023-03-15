@@ -26,7 +26,6 @@ class HMM:
     def __init__(self, train_data: List[List[Tuple[str, str]]]) -> None:
         """
         Initialise a new instance of the HMM.
-
         :param train_data: The training dataset, a list of sentences with tags
         """
         self.train_data = train_data
@@ -56,7 +55,6 @@ class HMM:
         Compute an emission model based on labelled training data.
         Don't forget to lowercase the observation otherwise it mismatches
         the test data.
-
         :param train_data: The training dataset, a list of sentences with tags
         :return: The emission probability distribution and a list of the states
         """
@@ -102,10 +100,8 @@ class HMM:
     def elprob(self, state: str, word: str) -> float:
         """
         The log of the estimated probability of emitting a word from a state.
-
         If you use the math library to compute a log base 2, make sure to
         use math.log(p,2) (rather than math.log2(p))
-
         :param state: the state name
         :param word: the word
         :return: log base 2 of the estimated emission probability
@@ -123,7 +119,6 @@ class HMM:
         """
         Compute a transition model using a ConditionalProbDist based on
           labelled data.
-
         :param train_data: The training dataset, a list of sentences with tags
         :return: The transition probability distribution
         """
@@ -174,10 +169,8 @@ class HMM:
     def tlprob(self, state1: str, state2: str) -> float:
         """
         The log of the estimated probability of a transition from one state to another
-
         If you use the math library to compute a log base 2, make sure to
         use math.log(p,2) (rather than math.log2(p))
-
         :param state1: the first state name
         :param state2: the second state name
         :return: log base 2 of the estimated transition probability
@@ -204,7 +197,6 @@ class HMM:
         """
         Initialise data structures self.viterbi and self.backpointer for
         tagging a new sentence.
-
         :param observation: the first word in the sentence to tag
         :param number_of_observations: the number of observations
         """
@@ -213,12 +205,17 @@ class HMM:
         #  transition from <s> to observation
         # use costs (- log-base-2 probabilities)
         # TODO
-        backpointer = np.zeros(len(self.states),number_of_observations, dtype=int) # Initialise a 2D-array for backpointer
-        viterbi = np.zeros(len(self.states),number_of_observations) # initial the trellis of viterbi with a 2D-array to represent the path probability matrix
-        for state in range(len(self.states)):
-            emission_cost=-math.log(self.elprob(state,observation),2)
-            transition_cost=-math.log(self.tlprob('<s>',state))
-            viterbi[state,:]=emission_cost+transition_cost
+        self.backpointer ={} # Initialise a dictionary for backpointer
+        self.viterbi = {} # initial the trellis of viterbi with a dictionary to represent the path probability matrix
+        for state in self.states:
+            if state not in self.viterbi:
+                self.viterbi[state]={}
+            if state not in self.backpointer:
+                self.backpointer[state]={}
+            emission_cost=-self.elprob(state,observation)
+            transition_cost=-(self.tlprob('<s>',state))
+            self.viterbi[state][0]=emission_cost+transition_cost
+            self.backpointer[state][0]='<s>'
         
 
 
@@ -233,17 +230,17 @@ class HMM:
         """
         Return the current value from self.viterbi for
         the state (tag) at a given step
-
         :param state: A tag name
         :param step: The (0-origin) number of a step:  if negative,
           counting backwards from the end, i.e. -1 means the last step
         :return: The value (a cost) for state as of step
         """
+
+        if step <0:
+            step+=len(self.viterbi[state].keys())
         return self.viterbi[state][step]
 
         
-
-        return 
 
     # Q2.1
     # Access function for testing the backpointer data structure
@@ -258,7 +255,8 @@ class HMM:
           counting backwards from the end, i.e. -1 means the last step
         :return: The state name to go back to at step-1
         """
-      
+        if step<0:
+            step=len(self.viterbi[state].keys())+step
         return self.backpointer[state][step]
 
     # Q2.2
@@ -275,14 +273,29 @@ class HMM:
         :param observations: List of words (a sentence) to be tagged
         :return: List of tags corresponding to each word of the input
         """
-       
-        tags = []
         
-        for t in range(2,len(observations)): # fixme to iterate over steps
-            for s in range(len(self.states)): # fixme to iterate over states
+        tags = []
 
+        for t in range (1,len(observations)): 
+            for s in self.states:
 
-                pass # fixme to update the viterbi and backpointer data structures
+                max_state = self.states[0]
+                min_val = float('inf') #initialize max state and min state value
+                for previous_state in self.states:
+                    cost=self.viterbi[previous_state][t-1] + -self.elprob(s,observations[t]) +-self.tlprob(previous_state,s)
+                    # we need to add them together to get the total cost 
+                    if cost < min_val:
+                        max_state=previous_state
+                        min_val=cost
+                if s not in self.viterbi:
+                    self.viterbi[s]={} #generate a value for key s if s is not in viterbi  
+                if s not in self.backpointer:
+                    self.backpointer[s]={}
+                self.viterbi[s][t]=min_val
+                self.backpointer[s][t]=max_state
+
+                    
+           
                 #  Use costs, not probabilities
                 # If the value of the backpointer is not uniquely determined
                 # because there are two options with the same cost,
@@ -292,12 +305,29 @@ class HMM:
         # TODO
         # Add a termination step with cost based solely on
         #   cost of transition to </s> , end of sentence.
-
+        end_max_state=self.states[0]
+        end_min_val = float('inf')
+        for final_state in self.states:
+            final_cost = self.viterbi[final_state][len(observations)-1   ]-self.tlprob(final_state,'.')
+            if final_cost<end_min_val:
+                end_max_state=final_state
+                end_min_val=final_cost
+        if '.' not in self.viterbi:
+            self.viterbi['']={}
+        if '.' not in self.backpointer:
+            self.backpointer['']={}
+        self.viterbi['.'][len(observations)]=end_min_val
+        self.backpointer['.'][len(observations)]=end_max_state
         # TODO
         # Reconstruct the tag sequence using the backpointers.
         # Return the tag sequence corresponding to the best path as a list.
         # The order should match that of the words in the sentence.
-        tags = ... # fixme
+        cur_state=end_max_state
+        #we need to find words and their corresponding state from the end of backpointer to the start of it
+        for step in range(len(observations)-1,-1,-1):
+            tags.insert(0,cur_state)
+            cur_state=self.backpointer[cur_state][step]
+
 
         return tags
 
@@ -306,8 +336,12 @@ class HMM:
         Initialise the HMM, lower case and tag a sentence. Returns a list of tags.
         :param sentence: the sentence
         """
-        raise NotImplementedError("HMM.tag_sentence")
-        return ... # fixme
+        lower_sentence=[]
+        for word in sentence:
+            lower_sentence.append(word.lower())
+        self.initialise(lower_sentence[0],len(lower_sentence))
+        tag_sentence=self.tag(lower_sentence)
+        return tag_sentence
 
 
 
